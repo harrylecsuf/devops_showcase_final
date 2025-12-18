@@ -149,6 +149,7 @@ resource "aws_lambda_function" "qr_generator" {
   handler         = "lambda_function.lambda_handler"
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   runtime         = "python3.9"
+  timeout         = 30
 
   environment {
     variables = {
@@ -170,7 +171,7 @@ resource "aws_lambda_function_url" "qr_generator_url" {
     allow_credentials = false
     allow_origins     = ["*"]
     allow_methods     = ["*"]
-    allow_headers     = ["date", "keep-alive"]
+    allow_headers     = ["date", "keep-alive", "Content-Type"]
     expose_headers    = ["date", "keep-alive"]
     max_age          = 86400
   }
