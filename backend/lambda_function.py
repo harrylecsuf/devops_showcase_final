@@ -9,7 +9,8 @@ from PIL import Image
 
 def lambda_handler(event, context):
     try:
-        if event.get('httpMethod') == 'OPTIONS':
+        # Handle CORS preflight requests
+        if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
             return {
                 'statusCode': 200,
                 'headers': {
