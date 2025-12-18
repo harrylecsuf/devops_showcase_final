@@ -51,5 +51,4 @@ Thumbs.db
 
 # Lambda deployment packages
 *.zip
-lambda_deployment.zip
-lambda_function.zip
+backend/package/

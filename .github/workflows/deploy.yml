@@ -34,20 +34,20 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies and create deployment package
         run: |
-          cd backend
-          pip install -r requirements.txt -t .
-          echo "Dependencies installed in backend directory"
-
-      - name: Create deployment package
-        run: |
-          cd backend
-          zip -r ../lambda_deployment.zip .
-          echo "Created lambda deployment package"
-          ls -la ../lambda_deployment.zip
+          mkdir -p backend/package
+          pip install -r backend/requirements.txt --target ./backend/package
+          cp backend/lambda_function.py ./backend/package/
+          
+          cd backend/package
+          zip -r ../../infrastructure/lambda_function.zip .
+          cd ../../
+          
+          ls -la infrastructure/lambda_function.zip
+          echo "Created lambda_function.zip in infrastructure directory"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -88,32 +88,7 @@ jobs:
           cd infrastructure
           terraform apply -auto-approve tfplan
 
-      - name: Get Lambda Function Name
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        id: lambda-info
-        run: |
-          cd infrastructure
-          FUNCTION_NAME=$(terraform output -raw lambda_function_name)
-          echo "function_name=$FUNCTION_NAME" >> $GITHUB_OUTPUT
-          echo "Lambda function name: $FUNCTION_NAME"
 
-      - name: Update Lambda Function Code
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          aws lambda update-function-code \
-            --function-name ${{ steps.lambda-info.outputs.function_name }} \
-            --zip-file fileb://lambda_deployment.zip \
-            --region ${{ env.AWS_REGION }}
-          echo "Lambda function code updated successfully"
-
-      - name: Wait for Lambda Update
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          echo "Waiting for Lambda function update to complete..."
-          aws lambda wait function-updated \
-            --function-name ${{ steps.lambda-info.outputs.function_name }} \
-            --region ${{ env.AWS_REGION }}
-          echo "Lambda function update completed"
 
       - name: Get Deployment Outputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
