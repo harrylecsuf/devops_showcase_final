@@ -55,6 +55,10 @@ jobs:
           terraform_version: 1.6.0
           terraform_wrapper: false
 
+      - name: Bootstrap S3 Backend
+        run: |
+          ./scripts/bootstrap.sh
+
       - name: Terraform Format Check
         run: |
           cd infrastructure
