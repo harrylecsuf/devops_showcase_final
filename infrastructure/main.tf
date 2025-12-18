@@ -59,10 +59,28 @@ resource "aws_s3_bucket_lifecycle_configuration" "qr_code_storage_lifecycle" {
 resource "aws_s3_bucket_public_access_block" "qr_code_storage_pab" {
   bucket = aws_s3_bucket.qr_code_storage.id
 
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "qr_code_storage_policy" {
+  bucket = aws_s3_bucket.qr_code_storage.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.qr_code_storage.arn}/*"
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.qr_code_storage_pab]
 }
 
 resource "aws_dynamodb_table" "qr_history" {
@@ -136,19 +154,13 @@ resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
   policy_arn = aws_iam_policy.lambda_policy.arn
 }
 
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "../backend"
-  output_path = "lambda_function.zip"
-}
-
 resource "aws_lambda_function" "qr_generator" {
-  filename         = data.archive_file.lambda_zip.output_path
+  filename         = "lambda_function.zip"
   function_name    = "QRGenerator"
   role            = aws_iam_role.lambda_execution_role.arn
   handler         = "lambda_function.lambda_handler"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  runtime         = "python3.9"
+  source_code_hash = filebase64sha256("lambda_function.zip")
+  runtime         = "python3.12"
   timeout         = 30
 
   environment {
