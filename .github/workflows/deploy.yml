@@ -86,6 +86,10 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           cd infrastructure
+          echo "Step 1: Applying S3 public access block change first to avoid race condition..."
+          terraform apply -auto-approve -target=aws_s3_bucket_public_access_block.qr_code_storage_pab
+          
+          echo "Step 2: Applying all other changes..."
           terraform apply -auto-approve tfplan
 
 
