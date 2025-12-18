@@ -8,22 +8,9 @@ import qrcode
 from PIL import Image
 
 def lambda_handler(event, context):
-    # Always include CORS headers
-    cors_headers = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-    }
-    
+
     try:
-        # Handle CORS preflight requests
-        request_method = event.get('requestContext', {}).get('http', {}).get('method')
-        if request_method == 'OPTIONS':
-            return {
-                'statusCode': 200,
-                'headers': cors_headers
-            }
-        
+
         if isinstance(event.get('body'), str):
             body = json.loads(event['body'])
         else:
@@ -33,7 +20,7 @@ def lambda_handler(event, context):
         if not text_to_encode:
             return {
                 'statusCode': 400,
-                'headers': {**cors_headers, 'Content-Type': 'application/json'},
+                'headers': {'Content-Type': 'application/json'},
                 'body': json.dumps({'error': 'text_to_encode is required'})
             }
         
@@ -81,7 +68,7 @@ def lambda_handler(event, context):
         
         return {
             'statusCode': 200,
-            'headers': {**cors_headers, 'Content-Type': 'application/json'},
+            'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({
                 'id': unique_id,
                 's3_url': s3_url,
@@ -92,6 +79,6 @@ def lambda_handler(event, context):
     except Exception as e:
         return {
             'statusCode': 500,
-            'headers': {**cors_headers, 'Content-Type': 'application/json'},
+            'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': str(e)})
         }
