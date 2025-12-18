@@ -1,0 +1,146 @@
+name: Deploy QR Code Generator
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt -t .
+          echo "Dependencies installed in backend directory"
+
+      - name: Create deployment package
+        run: |
+          cd backend
+          zip -r ../lambda_deployment.zip .
+          echo "Created lambda deployment package"
+          ls -la ../lambda_deployment.zip
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        run: |
+          cd infrastructure
+          terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: |
+          cd infrastructure
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          cd infrastructure
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          cd infrastructure
+          terraform plan -out=tfplan
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cd infrastructure
+          terraform apply -auto-approve tfplan
+
+      - name: Get Lambda Function Name
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: lambda-info
+        run: |
+          cd infrastructure
+          FUNCTION_NAME=$(terraform output -raw lambda_function_name)
+          echo "function_name=$FUNCTION_NAME" >> $GITHUB_OUTPUT
+          echo "Lambda function name: $FUNCTION_NAME"
+
+      - name: Update Lambda Function Code
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.lambda-info.outputs.function_name }} \
+            --zip-file fileb://lambda_deployment.zip \
+            --region ${{ env.AWS_REGION }}
+          echo "Lambda function code updated successfully"
+
+      - name: Wait for Lambda Update
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "Waiting for Lambda function update to complete..."
+          aws lambda wait function-updated \
+            --function-name ${{ steps.lambda-info.outputs.function_name }} \
+            --region ${{ env.AWS_REGION }}
+          echo "Lambda function update completed"
+
+      - name: Get Deployment Outputs
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cd infrastructure
+          echo "=== Deployment Outputs ==="
+          echo "S3 Bucket: $(terraform output -raw s3_bucket_name)"
+          echo "DynamoDB Table: $(terraform output -raw dynamodb_table_name)"
+          echo "Lambda Function: $(terraform output -raw lambda_function_name)"
+          echo "Function URL: $(terraform output -raw lambda_function_url)"
+          echo "=========================="
+
+      - name: Test Lambda Function
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cd infrastructure
+          FUNCTION_URL=$(terraform output -raw lambda_function_url)
+          echo "Testing Lambda function at: $FUNCTION_URL"
+          
+          response=$(curl -s -w "%{http_code}" -o response.json \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"text_to_encode":"GitHub Actions Test"}' \
+            "$FUNCTION_URL")
+          
+          http_code="${response: -3}"
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Lambda function test successful"
+            cat response.json
+          else
+            echo "❌ Lambda function test failed with HTTP $http_code"
+            cat response.json
+            exit 1
+          fi
